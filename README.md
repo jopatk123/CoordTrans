@@ -36,7 +36,24 @@ CoordTrans/
 │   ├── package.json
 │   └── vite.config.js
 ├── docker-compose.yml  # 生产部署配置
-├── docker-compose.dev.yml  # 开发环境配置
 ├── Makefile           # 常用命令快捷方式
+├── dev.sh / dev-*.sh  # 本地开发快捷脚本
+├── scripts/run_tests.sh # 一键测试脚本
 └── README.md
 ```
+
+## 快速开始
+
+1. 复制环境变量模版：`cp .env.example .env`，并填写 `AMAP_KEY` 等配置。
+2. 安装依赖：`make install`（分别安装后端和前端依赖）。
+3. 启动本地开发环境：
+	- 完整前后端：`./dev.sh`（按下 `Ctrl+C` 可同时停止两个进程）。
+	- 仅后端：`./dev-backend.sh`（默认监听 `BACKEND_HOST` 与 `BACKEND_PORT`）。
+	- 仅前端：`./dev-frontend.sh`（默认监听 `FRONTEND_PORT`）。
+
+## 运行测试
+
+- 推荐使用一键脚本：`./scripts/run_tests.sh`（先运行后端 pytest，再运行前端 Vitest）。
+- 也可以通过 `make test`、`make test-backend`、`make test-frontend` 分别执行。
+
+所有测试均会在 CI 中执行，请在提交前确保它们通过。

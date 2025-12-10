@@ -102,7 +102,8 @@ async def test_regeo_code_with_extensions(amap_service):
         assert result is not None
         mock_get.assert_called_once()
         call_args = mock_get.call_args
-        assert call_args[1]["params"]["extensions"] == "all"
+        params = call_args[0][1]
+        assert params["extensions"] == "all"
 
 
 @pytest.mark.asyncio

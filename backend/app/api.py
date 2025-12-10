@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 import pandas as pd
 import io
@@ -12,8 +12,29 @@ class GeoRequest(BaseModel):
     address: str
     city: Optional[str] = None
 
+    @field_validator("address")
+    @classmethod
+    def address_must_not_be_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("address must not be empty")
+        return cleaned
+
 class RegeoRequest(BaseModel):
     location: str # lon,lat
+
+    @field_validator("location")
+    @classmethod
+    def location_must_be_valid(cls, value: str) -> str:
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+        if len(parts) != 2:
+            raise ValueError("location must contain longitude and latitude")
+        try:
+            float(parts[0])
+            float(parts[1])
+        except ValueError as exc:
+            raise ValueError("location must be numeric") from exc
+        return ",".join(parts)
 
 @router.post("/geo")
 async def geocode(req: GeoRequest):

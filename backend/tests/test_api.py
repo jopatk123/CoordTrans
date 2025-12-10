@@ -82,6 +82,18 @@ def test_geocode_missing_address(client):
     assert response.status_code == 422  # Validation error
 
 
+def test_geocode_blank_address(client):
+    """测试空白地址参数"""
+    response = client.post("/api/geo", json={"address": "   "})
+    assert response.status_code == 422
+
+
+def test_regeocode_invalid_location_format(client):
+    """测试非法经纬度格式"""
+    response = client.post("/api/regeo", json={"location": "abc"})
+    assert response.status_code == 422
+
+
 @pytest.mark.asyncio
 async def test_batch_file_geo_excel(client, mock_amap_key):
     """测试批量文件地址转经纬度（Excel格式）"""
@@ -124,6 +136,43 @@ async def test_batch_file_geo_excel(client, mock_amap_key):
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+    @pytest.mark.asyncio
+    async def test_batch_file_regeo_excel(client, mock_amap_key):
+        """测试批量文件经纬度转地址（Excel格式）"""
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "经度": [116.481488, 121.544379],
+            "纬度": [39.990464, 31.221517]
+        })
+
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False)
+        buffer.seek(0)
+
+        mock_results = [
+            {
+                "formatted_address": "北京市朝阳区阜通东大街6号",
+                "addressComponent": {"township": "望京街道"}
+            },
+            {
+                "formatted_address": "上海市浦东新区",
+                "addressComponent": {"township": "花木街道"}
+            }
+        ]
+
+        with patch("app.services.amap_service.batch_regeo_code", new_callable=AsyncMock) as mock_batch:
+            mock_batch.return_value = mock_results
+
+            response = client.post(
+                "/api/batch/file/regeo",
+                files={"file": ("regeo.xlsx", buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+            )
+
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def test_batch_file_unsupported_format(client):
