@@ -1,12 +1,14 @@
+import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel, field_validator
-from typing import List, Optional
+from typing import Optional
 import pandas as pd
 import io
 from fastapi.responses import StreamingResponse
-from .services import amap_service
+from .services import amap_service, AmapServiceError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class GeoRequest(BaseModel):
     address: str
@@ -38,14 +40,22 @@ class RegeoRequest(BaseModel):
 
 @router.post("/geo")
 async def geocode(req: GeoRequest):
-    result = await amap_service.geo_code(req.address, req.city)
+    try:
+        result = await amap_service.geo_code(req.address, req.city)
+    except AmapServiceError as exc:
+        logger.warning("Amap geocode failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
     if not result:
         return {"status": "failed", "msg": "Not found"}
     return {"status": "success", "data": result}
 
 @router.post("/regeo")
 async def regeocode(req: RegeoRequest):
-    result = await amap_service.regeo_code(req.location, extensions="all")
+    try:
+        result = await amap_service.regeo_code(req.location, extensions="all")
+    except AmapServiceError as exc:
+        logger.warning("Amap regeo failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
     if not result:
         return {"status": "failed", "msg": "Not found"}
     return {"status": "success", "data": result}
@@ -77,7 +87,11 @@ async def batch_file_geo(file: UploadFile = File(...)):
     if len(addresses) > 1000:
         raise HTTPException(400, "Batch size limit exceeded (max 1000 rows)")
 
-    results = await amap_service.batch_geo_code(addresses)
+    try:
+        results = await amap_service.batch_geo_code(addresses)
+    except AmapServiceError as exc:
+        logger.warning("Amap batch geo failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
     
     lons, lats, formatted_addresses, provinces, cities, districts = [], [], [], [], [], []
     
@@ -150,7 +164,11 @@ async def batch_file_regeo(file: UploadFile = File(...)):
     if len(locations) > 1000:
         raise HTTPException(400, "Batch size limit exceeded (max 1000 rows)")
 
-    results = await amap_service.batch_regeo_code(locations)
+    try:
+        results = await amap_service.batch_regeo_code(locations)
+    except AmapServiceError as exc:
+        logger.warning("Amap batch regeo failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
     
     addrs = []
     townships = []

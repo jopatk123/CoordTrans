@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch
-from app.services import AmapService
+from app.services import AmapService, AmapServiceError
 
 
 @pytest.fixture
@@ -150,10 +150,8 @@ async def test_batch_regeo_code(amap_service):
 @pytest.mark.asyncio
 async def test_api_error_handling(amap_service):
     """测试API错误处理"""
-    import httpx
-    
     with patch.object(amap_service, "_get", new_callable=AsyncMock) as mock_get:
-        mock_get.side_effect = httpx.HTTPError("API Error")
+        mock_get.side_effect = AmapServiceError("API Error")
         
-        with pytest.raises(httpx.HTTPError):
+        with pytest.raises(AmapServiceError):
             await amap_service.geo_code("测试地址")

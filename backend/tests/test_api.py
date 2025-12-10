@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
+
+from app.services import AmapServiceError
 import io
 
 
@@ -95,6 +97,36 @@ def test_regeocode_invalid_location_format(client):
 
 
 @pytest.mark.asyncio
+async def test_geocode_provider_failure(client, mock_amap_key):
+    """当第三方地理编码服务不可用时应该返回 502"""
+    with patch(
+        "app.services.amap_service.geo_code",
+        new_callable=AsyncMock,
+    ) as mock_geo:
+        mock_geo.side_effect = AmapServiceError("boom")
+
+        response = client.post("/api/geo", json={"address": "Somewhere"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Geocoding provider unavailable"
+
+
+@pytest.mark.asyncio
+async def test_regeocode_provider_failure(client, mock_amap_key):
+    """逆地理编码异常也应该返回 502"""
+    with patch(
+        "app.services.amap_service.regeo_code",
+        new_callable=AsyncMock,
+    ) as mock_regeo:
+        mock_regeo.side_effect = AmapServiceError("boom")
+
+        response = client.post("/api/regeo", json={"location": "1,1"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Geocoding provider unavailable"
+
+
+@pytest.mark.asyncio
 async def test_batch_file_geo_excel(client, mock_amap_key):
     """测试批量文件地址转经纬度（Excel格式）"""
     import pandas as pd
@@ -138,41 +170,41 @@ async def test_batch_file_geo_excel(client, mock_amap_key):
         assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-    @pytest.mark.asyncio
-    async def test_batch_file_regeo_excel(client, mock_amap_key):
-        """测试批量文件经纬度转地址（Excel格式）"""
-        import pandas as pd
+@pytest.mark.asyncio
+async def test_batch_file_regeo_excel(client, mock_amap_key):
+    """测试批量文件经纬度转地址（Excel格式）"""
+    import pandas as pd
 
-        df = pd.DataFrame({
-            "经度": [116.481488, 121.544379],
-            "纬度": [39.990464, 31.221517]
-        })
+    df = pd.DataFrame({
+        "经度": [116.481488, 121.544379],
+        "纬度": [39.990464, 31.221517]
+    })
 
-        buffer = io.BytesIO()
-        df.to_excel(buffer, index=False)
-        buffer.seek(0)
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False)
+    buffer.seek(0)
 
-        mock_results = [
-            {
-                "formatted_address": "北京市朝阳区阜通东大街6号",
-                "addressComponent": {"township": "望京街道"}
-            },
-            {
-                "formatted_address": "上海市浦东新区",
-                "addressComponent": {"township": "花木街道"}
-            }
-        ]
+    mock_results = [
+        {
+            "formatted_address": "北京市朝阳区阜通东大街6号",
+            "addressComponent": {"township": "望京街道"}
+        },
+        {
+            "formatted_address": "上海市浦东新区",
+            "addressComponent": {"township": "花木街道"}
+        }
+    ]
 
-        with patch("app.services.amap_service.batch_regeo_code", new_callable=AsyncMock) as mock_batch:
-            mock_batch.return_value = mock_results
+    with patch("app.services.amap_service.batch_regeo_code", new_callable=AsyncMock) as mock_batch:
+        mock_batch.return_value = mock_results
 
-            response = client.post(
-                "/api/batch/file/regeo",
-                files={"file": ("regeo.xlsx", buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
-            )
+        response = client.post(
+            "/api/batch/file/regeo",
+            files={"file": ("regeo.xlsx", buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        )
 
-            assert response.status_code == 200
-            assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def test_batch_file_unsupported_format(client):

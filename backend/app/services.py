@@ -1,7 +1,13 @@
-import httpx
 import asyncio
+import httpx
 from typing import List, Dict, Any
+
 from .config import settings
+
+
+class AmapServiceError(RuntimeError):
+    """Raised when requests to the Amap API fail."""
+    pass
 
 AMAP_BASE_URL = "https://restapi.amap.com/v3"
 
@@ -11,10 +17,17 @@ class AmapService:
 
     async def _get(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
         params["key"] = self.key
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise AmapServiceError(
+                f"Amap responded with HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise AmapServiceError("Unable to reach Amap geocoding service") from exc
 
     async def geo_code(self, address: str, city: str = None) -> Dict[str, Any]:
         """地址转经纬度"""
