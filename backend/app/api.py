@@ -1,29 +1,49 @@
+"""API 路由定义模块"""
 import logging
 import re
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
-import pandas as pd
-import io
-from fastapi.responses import StreamingResponse
+
+from .config import settings
 from .services import amap_service, AmapServiceError
+from .errors import ApiResponse
+from .utils import (
+    read_upload_file,
+    find_address_column,
+    find_location_columns,
+    extract_addresses,
+    extract_locations,
+    create_excel_response,
+    process_geo_results,
+    process_regeo_results,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# 常量定义
-MAX_BATCH_SIZE = 1000
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-MAX_ADDRESS_LENGTH = 200
-MAX_CITY_LENGTH = 50
+
+# ========== 请求模型定义 ==========
 
 class GeoRequest(BaseModel):
-    address: str
-    city: Optional[str] = None
+    """地址转经纬度请求模型"""
+    address: str = Field(
+        ..., 
+        min_length=2,
+        max_length=settings.MAX_ADDRESS_LENGTH,
+        description="详细地址",
+        json_schema_extra={"example": "北京市朝阳区阜通东大街6号"}
+    )
+    city: Optional[str] = Field(
+        default=None,
+        max_length=settings.MAX_CITY_LENGTH,
+        description="城市名称（可选，用于提高精度）",
+        json_schema_extra={"example": "北京"}
+    )
 
     @field_validator("address")
     @classmethod
-    def address_must_not_be_blank(cls, value: str) -> str:
+    def validate_address(cls, value: str) -> str:
         if value is None:
             raise ValueError("address is required")
         cleaned = value.strip()
@@ -31,32 +51,38 @@ class GeoRequest(BaseModel):
             raise ValueError("address must not be empty")
         if len(cleaned) < 2:
             raise ValueError("address must be at least 2 characters")
-        if len(cleaned) > MAX_ADDRESS_LENGTH:
-            raise ValueError(f"address must not exceed {MAX_ADDRESS_LENGTH} characters")
+        if len(cleaned) > settings.MAX_ADDRESS_LENGTH:
+            raise ValueError(f"address must not exceed {settings.MAX_ADDRESS_LENGTH} characters")
         # 移除潜在的危险字符
         cleaned = re.sub(r'[<>"\';]', '', cleaned)
         return cleaned
 
     @field_validator("city")
     @classmethod
-    def city_must_be_valid(cls, value: Optional[str]) -> Optional[str]:
+    def validate_city(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         cleaned = value.strip()
         if not cleaned:
             return None
-        if len(cleaned) > MAX_CITY_LENGTH:
-            raise ValueError(f"city must not exceed {MAX_CITY_LENGTH} characters")
+        if len(cleaned) > settings.MAX_CITY_LENGTH:
+            raise ValueError(f"city must not exceed {settings.MAX_CITY_LENGTH} characters")
         # 移除潜在的危险字符
         cleaned = re.sub(r'[<>"\';]', '', cleaned)
         return cleaned
 
+
 class RegeoRequest(BaseModel):
-    location: str  # lon,lat
+    """经纬度转地址请求模型"""
+    location: str = Field(
+        ..., 
+        description="经纬度坐标，格式: 经度,纬度",
+        json_schema_extra={"example": "116.481488,39.990464"}
+    )
 
     @field_validator("location")
     @classmethod
-    def location_must_be_valid(cls, value: str) -> str:
+    def validate_location(cls, value: str) -> str:
         if value is None:
             raise ValueError("location is required")
         value = value.strip()
@@ -81,254 +107,172 @@ class RegeoRequest(BaseModel):
         
         return f"{lon},{lat}"
 
-@router.post("/geo")
+
+# ========== 单条查询接口 ==========
+
+@router.post(
+    "/geo",
+    tags=["geocoding"],
+    summary="地址转经纬度",
+    description="输入详细地址，返回经纬度坐标及详细地址信息"
+)
 async def geocode(req: GeoRequest):
+    """
+    地址转经纬度 (Geocoding)
+    
+    - **address**: 详细地址，如 "北京市朝阳区阜通东大街6号"
+    - **city**: 城市名称（可选），提供后可提高精度
+    
+    返回包含经纬度、省市区等详细信息的结果。
+    """
     try:
         result = await amap_service.geo_code(req.address, req.city)
     except AmapServiceError as exc:
         logger.warning("Amap geocode failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
+        raise HTTPException(status_code=502, detail="地图服务暂时不可用") from exc
+    
     if not result:
-        return {"status": "failed", "msg": "Not found"}
-    return {"status": "success", "data": result}
+        return ApiResponse.not_found("未找到该地址对应的坐标")
+    return ApiResponse.success(data=result)
 
-@router.post("/regeo")
+
+@router.post(
+    "/regeo",
+    tags=["geocoding"],
+    summary="经纬度转地址",
+    description="输入经纬度坐标，返回详细地址信息"
+)
 async def regeocode(req: RegeoRequest):
+    """
+    经纬度转地址 (Reverse Geocoding)
+    
+    - **location**: 经纬度坐标，格式为 "经度,纬度"，如 "116.481488,39.990464"
+    
+    返回包含详细地址、行政区划、街道等信息的结果。
+    """
     try:
         result = await amap_service.regeo_code(req.location, extensions="all")
     except AmapServiceError as exc:
         logger.warning("Amap regeo failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
+        raise HTTPException(status_code=502, detail="地图服务暂时不可用") from exc
+    
     if not result:
-        return {"status": "failed", "msg": "Not found"}
-    return {"status": "success", "data": result}
+        return ApiResponse.not_found("未找到该坐标对应的地址")
+    return ApiResponse.success(data=result)
 
-@router.post("/batch/file/geo")
-async def batch_file_geo(file: UploadFile = File(...)):
-    # 验证文件名
-    if not file.filename:
-        raise HTTPException(400, "文件名无效")
-    
-    filename_lower = file.filename.lower()
-    if not any(filename_lower.endswith(ext) for ext in ['.csv', '.xls', '.xlsx']):
-        raise HTTPException(400, "不支持的文件格式，请上传 CSV 或 Excel 文件")
-    
-    # 读取文件内容并检查大小
-    contents = await file.read()
-    if len(contents) == 0:
-        raise HTTPException(400, "文件为空")
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(400, f"文件过大，最大支持 {MAX_FILE_SIZE // (1024*1024)}MB")
-    
-    try:
-        if filename_lower.endswith('.csv'):
-            # 尝试多种编码
-            for encoding in ['utf-8', 'gbk', 'gb2312', 'latin1']:
-                try:
-                    df = pd.read_csv(io.BytesIO(contents), encoding=encoding)
-                    break
-                except UnicodeDecodeError:
-                    continue
-            else:
-                raise HTTPException(400, "无法解析文件编码，请使用 UTF-8 编码")
-        else:  # Excel files
-            df = pd.read_excel(io.BytesIO(contents))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error reading file: {e}")
-        raise HTTPException(400, f"读取文件失败: {str(e)[:100]}")
-    
-    # 验证数据框
-    if df.empty:
-        raise HTTPException(400, "文件内容为空")
-    if len(df.columns) == 0:
-        raise HTTPException(400, "文件没有有效列")
-    
-    # Find address column
-    target_col = None
-    for col in df.columns:
-        col_str = str(col).lower()
-        if "address" in col_str or "地址" in col_str:
-            target_col = col
-            break
-    if target_col is None:
-        target_col = df.columns[0]  # Default to first column
-        logger.info(f"No address column found, using first column: {target_col}")
 
-    # 清理和过滤地址
-    addresses = []
-    for val in df[target_col].tolist():
-        if pd.isna(val) or val is None:
-            addresses.append('')
-        else:
-            addr = str(val).strip()[:MAX_ADDRESS_LENGTH]
-            addresses.append(addr)
-    
-    # Limit batch size for safety
-    if len(addresses) > MAX_BATCH_SIZE:
-        raise HTTPException(400, f"数据行数超出限制，最多支持 {MAX_BATCH_SIZE} 行")
+# ========== 批量处理接口 ==========
 
+@router.post(
+    "/batch/file/geo",
+    tags=["batch"],
+    summary="批量地址转经纬度",
+    description="上传包含地址列的 Excel/CSV 文件，批量转换为经纬度"
+)
+async def batch_file_geo(
+    file: UploadFile = File(..., description="Excel 或 CSV 文件，需包含地址列")
+):
+    """
+    批量地址转经纬度
+    
+    上传 Excel (.xlsx, .xls) 或 CSV 文件，系统会自动识别包含"地址"或"address"的列。
+    如未找到，默认使用第一列作为地址列。
+    
+    **文件要求:**
+    - 支持格式: .xlsx, .xls, .csv
+    - 最大文件大小: 10MB
+    - 最大行数: 1000 行
+    
+    **返回:**
+    处理后的 Excel 文件，包含原始数据及新增的经纬度、省市区等列。
+    """
+    # 读取并验证文件
+    df, _ = await read_upload_file(file)
+    
+    # 查找地址列
+    target_col = find_address_column(df)
+    
+    # 提取地址列表
+    addresses = extract_addresses(df, target_col, settings.MAX_ADDRESS_LENGTH)
+    
+    # 验证批量大小
+    if len(addresses) > settings.MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"数据行数超出限制，最多支持 {settings.MAX_BATCH_SIZE} 行"
+        )
+
+    # 调用批量转换服务
     try:
         results = await amap_service.batch_geo_code(addresses)
     except AmapServiceError as exc:
         logger.warning("Amap batch geo failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
+        raise HTTPException(status_code=502, detail="地图服务暂时不可用") from exc
     
-    lons, lats, formatted_addresses, provinces, cities, districts = [], [], [], [], [], []
+    # 处理结果并添加到 DataFrame
+    geo_data = process_geo_results(results)
+    df['api_longitude'] = geo_data['longitude']
+    df['api_latitude'] = geo_data['latitude']
+    df['api_formatted_address'] = geo_data['formatted_address']
+    df['api_province'] = geo_data['province']
+    df['api_city'] = geo_data['city']
+    df['api_district'] = geo_data['district']
     
-    for res in results:
-        if res:
-            loc = res.get('location', ',').split(',')
-            lons.append(loc[0] if len(loc) > 0 else '')
-            lats.append(loc[1] if len(loc) > 1 else '')
-            formatted_addresses.append(res.get('formatted_address', ''))
-            provinces.append(res.get('province', ''))
-            cities.append(res.get('city', ''))
-            districts.append(res.get('district', ''))
-        else:
-            lons.append('')
-            lats.append('')
-            formatted_addresses.append('')
-            provinces.append('')
-            cities.append('')
-            districts.append('')
-            
-    df['api_longitude'] = lons
-    df['api_latitude'] = lats
-    df['api_formatted_address'] = formatted_addresses
-    df['api_province'] = provinces
-    df['api_city'] = cities
-    df['api_district'] = districts
-    
-    output = io.BytesIO()
-    # Default to Excel for output
-    df.to_excel(output, index=False)
-    output.seek(0)
-    
-    return StreamingResponse(
-        output, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=processed_geocoding.xlsx"}
-    )
+    # 返回 Excel 文件
+    return create_excel_response(df, "processed_geocoding.xlsx")
 
-@router.post("/batch/file/regeo")
-async def batch_file_regeo(file: UploadFile = File(...)):
-    # 验证文件名
-    if not file.filename:
-        raise HTTPException(400, "文件名无效")
-    
-    filename_lower = file.filename.lower()
-    if not any(filename_lower.endswith(ext) for ext in ['.csv', '.xls', '.xlsx']):
-        raise HTTPException(400, "不支持的文件格式，请上传 CSV 或 Excel 文件")
-    
-    contents = await file.read()
-    if len(contents) == 0:
-        raise HTTPException(400, "文件为空")
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(400, f"文件过大，最大支持 {MAX_FILE_SIZE // (1024*1024)}MB")
-    
-    try:
-        if filename_lower.endswith('.csv'):
-            for encoding in ['utf-8', 'gbk', 'gb2312', 'latin1']:
-                try:
-                    df = pd.read_csv(io.BytesIO(contents), encoding=encoding)
-                    break
-                except UnicodeDecodeError:
-                    continue
-            else:
-                raise HTTPException(400, "无法解析文件编码，请使用 UTF-8 编码")
-        else:
-            df = pd.read_excel(io.BytesIO(contents))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error reading file: {e}")
-        raise HTTPException(400, f"读取文件失败: {str(e)[:100]}")
-    
-    if df.empty:
-        raise HTTPException(400, "文件内容为空")
 
-    # Find lat/lon columns
-    lat_col, lon_col = None, None
-    for col in df.columns:
-        c = str(col).lower()
-        if "lat" in c or "纬度" in c:
-            lat_col = col
-        if "lon" in c or "lng" in c or "经度" in c:
-            lon_col = col
+@router.post(
+    "/batch/file/regeo",
+    tags=["batch"],
+    summary="批量经纬度转地址",
+    description="上传包含经纬度列的 Excel/CSV 文件，批量转换为地址"
+)
+async def batch_file_regeo(
+    file: UploadFile = File(..., description="Excel 或 CSV 文件，需包含经度和纬度列")
+):
+    """
+    批量经纬度转地址
     
-    if not lat_col or not lon_col:
-        # Try first two columns
-        if len(df.columns) >= 2:
-            lon_col, lat_col = df.columns[0], df.columns[1]
-            logger.info(f"No lat/lon columns found, using first two columns: {lon_col}, {lat_col}")
-        else:
-            raise HTTPException(400, "无法识别经纬度列，请确保文件包含'经度'和'纬度'列")
-
-    locations = []
-    invalid_count = 0
-    for idx, row in df.iterrows():
-        try:
-            lon_val = row[lon_col]
-            lat_val = row[lat_col]
-            
-            # 处理空值
-            if pd.isna(lon_val) or pd.isna(lat_val):
-                locations.append('')
-                invalid_count += 1
-                continue
-            
-            lon = float(lon_val)
-            lat = float(lat_val)
-            
-            # 验证范围
-            if not (-180 <= lon <= 180 and -90 <= lat <= 90):
-                locations.append('')
-                invalid_count += 1
-                continue
-                
-            locations.append(f"{lon},{lat}")
-        except (ValueError, TypeError):
-            locations.append('')
-            invalid_count += 1
+    上传 Excel (.xlsx, .xls) 或 CSV 文件，系统会自动识别经度和纬度列。
+    支持的列名: 经度/lon/lng, 纬度/lat
+    如未找到，默认使用前两列。
     
-    if invalid_count > 0:
-        logger.warning(f"Found {invalid_count} invalid location entries")
+    **文件要求:**
+    - 支持格式: .xlsx, .xls, .csv
+    - 最大文件大小: 10MB
+    - 最大行数: 1000 行
     
-    if all(loc == '' for loc in locations):
-        raise HTTPException(400, "所有经纬度数据无效，请检查文件格式")
+    **返回:**
+    处理后的 Excel 文件，包含原始数据及新增的地址、街道等列。
+    """
+    # 读取并验证文件
+    df, _ = await read_upload_file(file)
+    
+    # 查找经纬度列
+    lon_col, lat_col = find_location_columns(df)
+    
+    # 提取经纬度列表
+    locations, invalid_count = extract_locations(df, lon_col, lat_col)
+    
+    # 验证批量大小
+    if len(locations) > settings.MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"数据行数超出限制，最多支持 {settings.MAX_BATCH_SIZE} 行"
+        )
 
-    if len(locations) > MAX_BATCH_SIZE:
-        raise HTTPException(400, f"数据行数超出限制，最多支持 {MAX_BATCH_SIZE} 行")
-
+    # 调用批量转换服务
     try:
         results = await amap_service.batch_regeo_code(locations)
     except AmapServiceError as exc:
         logger.warning("Amap batch regeo failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Geocoding provider unavailable") from exc
+        raise HTTPException(status_code=502, detail="地图服务暂时不可用") from exc
     
-    addrs = []
-    townships = []
+    # 处理结果并添加到 DataFrame
+    regeo_data = process_regeo_results(results)
+    df['api_address'] = regeo_data['address']
+    df['api_township'] = regeo_data['township']
     
-    for res in results:
-        if res:
-            addrs.append(res.get('formatted_address', ''))
-            addr_comp = res.get('addressComponent', {})
-            townships.append(addr_comp.get('township', ''))
-        else:
-            addrs.append('')
-            townships.append('')
-            
-    df['api_address'] = addrs
-    df['api_township'] = townships
-    
-    output = io.BytesIO()
-    df.to_excel(output, index=False)
-    output.seek(0)
-    
-    return StreamingResponse(
-        output, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=processed_regeocoding.xlsx"}
-    )
+    # 返回 Excel 文件
+    return create_excel_response(df, "processed_regeocoding.xlsx")

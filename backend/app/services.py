@@ -13,24 +13,31 @@ class AmapServiceError(RuntimeError):
     pass
 
 
-AMAP_BASE_URL = "https://restapi.amap.com/v3"
-REQUEST_TIMEOUT = 10.0  # 单个请求超时时间（秒）
-BATCH_CONCURRENCY = 10  # 批量请求并发数
-RETRY_TIMES = 2  # 重试次数
-
-
 class AmapService:
+    """高德地图 API 服务封装"""
+    
     def __init__(self):
         self.key = settings.AMAP_KEY
-        self._semaphore = asyncio.Semaphore(BATCH_CONCURRENCY)
+        self.base_url = settings.AMAP_BASE_URL
+        self.timeout = settings.REQUEST_TIMEOUT
+        self.retry_times = settings.RETRY_TIMES
+        self._semaphore = asyncio.Semaphore(settings.BATCH_CONCURRENCY)
 
-    async def _get(self, url: str, params: Dict[str, Any], retry: int = RETRY_TIMES) -> Dict[str, Any]:
+    async def _get(
+        self, 
+        url: str, 
+        params: Dict[str, Any], 
+        retry: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """发送 GET 请求到高德 API，支持重试"""
+        if retry is None:
+            retry = self.retry_times
         params["key"] = self.key
         last_error = None
         
         for attempt in range(retry + 1):
             try:
-                async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.get(url, params=params)
                     response.raise_for_status()
                     data = response.json()
@@ -62,11 +69,20 @@ class AmapService:
         raise AmapServiceError(f"Unable to reach Amap service after {retry + 1} attempts") from last_error
 
     async def geo_code(self, address: str, city: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """地址转经纬度"""
+        """
+        地址转经纬度 (地理编码)
+        
+        Args:
+            address: 详细地址
+            city: 城市名称（可选，用于提高精度）
+            
+        Returns:
+            包含经纬度信息的字典，未找到返回 None
+        """
         if not address or not address.strip():
             return None
         
-        url = f"{AMAP_BASE_URL}/geocode/geo"
+        url = f"{self.base_url}/geocode/geo"
         params = {"address": address.strip()}
         if city and city.strip():
             params["city"] = city.strip()
@@ -84,14 +100,20 @@ class AmapService:
         return None
 
     async def regeo_code(self, location: str, extensions: str = "base") -> Optional[Dict[str, Any]]:
-        """经纬度转地址 (逆地理编码)
-        location: 经度,纬度 (例如: 116.481488,39.990464)
-        extensions: base (基本) / all (详细，包含POI、道路等)
+        """
+        经纬度转地址 (逆地理编码)
+        
+        Args:
+            location: 经度,纬度 (例如: 116.481488,39.990464)
+            extensions: base (基本) / all (详细，包含POI、道路等)
+            
+        Returns:
+            包含地址信息的字典，未找到返回 None
         """
         if not location or not location.strip():
             return None
         
-        url = f"{AMAP_BASE_URL}/geocode/regeo"
+        url = f"{self.base_url}/geocode/regeo"
         params = {
             "location": location.strip(),
             "extensions": extensions,
