@@ -22,7 +22,7 @@
 
 ```text
 CoordTrans/
-├── backend/              # Python FastAPI 后端
+    ├── backend/              # Python FastAPI 后端
 │   ├── app/
 │   │   ├── main.py       # 入口文件
 │   │   ├── api.py        # 接口定义

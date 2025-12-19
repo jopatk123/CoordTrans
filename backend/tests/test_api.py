@@ -10,7 +10,9 @@ def test_health_check(client):
     """测试健康检查接口"""
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "version" in data
 
 
 @pytest.mark.asyncio
@@ -108,7 +110,9 @@ async def test_geocode_provider_failure(client, mock_amap_key):
         response = client.post("/api/geo", json={"address": "Somewhere"})
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Geocoding provider unavailable"
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["code"] == 502
 
 
 @pytest.mark.asyncio
@@ -123,7 +127,9 @@ async def test_regeocode_provider_failure(client, mock_amap_key):
         response = client.post("/api/regeo", json={"location": "1,1"})
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Geocoding provider unavailable"
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["code"] == 502
 
 
 @pytest.mark.asyncio

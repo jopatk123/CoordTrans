@@ -1,24 +1,37 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { message } from 'antd'
-import axios from 'axios'
-import App from '../App.jsx'
 
-vi.mock('axios', () => ({
-  default: {
-    post: vi.fn(),
-  },
+// 使用 vi.hoisted 确保 mock 在 vi.mock 之前定义
+const { mockPost } = vi.hoisted(() => ({
+  mockPost: vi.fn()
 }))
+
+vi.mock('axios', () => {
+  const mockAxiosInstance = {
+    post: mockPost,
+    get: vi.fn(),
+  }
+  return {
+    default: {
+      create: vi.fn(() => mockAxiosInstance),
+      post: vi.fn(),
+    },
+  }
+})
+
+// 需要在 mock 之后导入 App
+import App from '../App.jsx'
 
 describe('App integration', () => {
   beforeEach(() => {
-    axios.post.mockReset()
+    mockPost.mockReset()
     vi.spyOn(message, 'success').mockImplementation(() => {})
     vi.spyOn(message, 'error').mockImplementation(() => {})
   })
 
   it('submits geocode requests and renders results', async () => {
-    axios.post.mockResolvedValueOnce({
+    mockPost.mockResolvedValueOnce({
       data: {
         status: 'success',
         data: {
@@ -40,7 +53,7 @@ describe('App integration', () => {
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith('/api/geo', expect.objectContaining({
+      expect(mockPost).toHaveBeenCalledWith('/api/geo', expect.objectContaining({
         address: '北京市朝阳区阜通东大街6号',
       }))
     })
@@ -50,7 +63,7 @@ describe('App integration', () => {
   })
 
   it('submits regeocode requests on the second tab', async () => {
-    axios.post.mockResolvedValueOnce({
+    mockPost.mockResolvedValueOnce({
       data: {
         status: 'success',
         data: {
@@ -74,7 +87,7 @@ describe('App integration', () => {
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith('/api/regeo', expect.objectContaining({
+      expect(mockPost).toHaveBeenCalledWith('/api/regeo', expect.objectContaining({
         location: '121.5,31.22',
       }))
     })
