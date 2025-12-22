@@ -135,7 +135,7 @@ docker build -t coordtrans:latest -f backend/Dockerfile .
 docker-compose up -d
 ```
 
-服务将在 `http://localhost:8080` 启动。
+服务将在 `http://localhost:60000` 启动。
 
 ## 配置说明
 
