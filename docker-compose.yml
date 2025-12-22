@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "8080:80"
+      - "60000:80"
     environment:
       - AMAP_KEY=${AMAP_KEY}
     restart: always
