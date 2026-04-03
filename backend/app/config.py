@@ -36,7 +36,25 @@ class Settings(BaseSettings):
         le=5,
         description="请求失败重试次数"
     )
-    
+    RATE_LIMIT_RETRY_TIMES: int = Field(
+        default=5,
+        ge=0,
+        le=10,
+        description="触发速率限制后的最大重试次数"
+    )
+    RATE_LIMIT_BASE_DELAY: float = Field(
+        default=2.0,
+        ge=0.5,
+        le=30.0,
+        description="速率限制重试的基础延迟时间（秒），使用指数退避"
+    )
+    REQUESTS_PER_SECOND: float = Field(
+        default=2.0,
+        ge=0.1,
+        le=100.0,
+        description="向高德 API 发送请求的最大速率（每秒请求数）"
+    )
+
     # ========== 批量处理限制 ==========
     MAX_BATCH_SIZE: int = Field(
         default=1000, 

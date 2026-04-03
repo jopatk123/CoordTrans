@@ -22,6 +22,8 @@ const ALLOWED_FILE_TYPES = [
 
 // 最大文件大小 (10MB)
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const BATCH_REQUEST_TIMEOUT = 0;
+const BATCH_PROCESSING_HINT = '批量任务按每秒 2 条请求处理，几百行数据通常需要几分钟，请等待结果自动下载。';
 
 // 错误消息映射
 const getErrorMessage = (error) => {
@@ -54,7 +56,9 @@ const App = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 1000);
   };
 
   // Single Geocode
@@ -191,9 +195,10 @@ const App = () => {
       try {
         const res = await api.post(`/api/batch/file/${type}`, formData, {
           responseType: 'blob',
-          timeout: 120000, // 批量处理超时 2分钟
+          timeout: BATCH_REQUEST_TIMEOUT,
           onUploadProgress: (progressEvent) => {
-            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            const total = progressEvent.total || progressEvent.loaded || 1;
+            const percent = Math.round((progressEvent.loaded * 100) / total);
             onProgress({ percent });
           }
         });
@@ -207,7 +212,7 @@ const App = () => {
         
         // 生成安全的文件名
         const safeName = file.name.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fa5]/g, '_');
-        downloadBlob(new Blob([res.data]), `processed_${safeName}.xlsx`);
+        downloadBlob(res.data, `processed_${safeName}.xlsx`);
         message.success(`${file.name} 处理成功`);
         onSuccess({}, file);
       } catch (err) {
@@ -271,7 +276,8 @@ const App = () => {
       </Card>
 
       <Card title="批量处理 (Excel/CSV)" variant="borderless">
-        <p className="mb-4 text-gray-500">请上传包含"地址"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-2 text-gray-500">请上传包含"地址"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-4 text-gray-500">{BATCH_PROCESSING_HINT}</p>
         <Spin spinning={uploadLoading} tip="处理中...">
           <Upload {...uploadProps('geo')}>
             <Button icon={<UploadOutlined />} disabled={uploadLoading} loading={uploadLoading}>
@@ -320,7 +326,8 @@ const App = () => {
       </Card>
 
       <Card title="批量处理 (Excel/CSV)" variant="borderless">
-        <p className="mb-4 text-gray-500">请上传包含"经度"和"纬度"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-2 text-gray-500">请上传包含"经度"和"纬度"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-4 text-gray-500">{BATCH_PROCESSING_HINT}</p>
         <Spin spinning={uploadLoading} tip="处理中...">
           <Upload {...uploadProps('regeo')}>
             <Button icon={<UploadOutlined />} disabled={uploadLoading} loading={uploadLoading}>
