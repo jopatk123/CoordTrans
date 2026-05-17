@@ -1,4 +1,4 @@
-.PHONY: help dev start dev-backend dev-frontend build test test-backend test-frontend clean install lint-frontend
+.PHONY: help dev start dev-backend dev-frontend build test test-backend test-frontend clean install lint lint-backend lint-frontend format-backend docker-up docker-down docker-logs
 
 help: ## 显示帮助信息
 	@echo "可用命令:"
@@ -59,9 +59,11 @@ clean: ## 清理临时文件和缓存
 	find . -type d -name "dist" -exec rm -rf {} + 2>/dev/null || true
 	@echo "✅ 清理完成"
 
-lint-backend: ## 检查后端代码格式
+lint-backend: ## 检查后端代码格式 (flake8)
 	@echo "🔍 检查后端代码..."
-	cd backend && python -m pylint app/
+	cd backend && .venv/bin/flake8 app/
+
+lint: lint-backend lint-frontend ## 检查前后端代码格式
 
 lint-frontend: ## 检查前端代码
 	@echo "🔍 检查前端代码..."
@@ -69,7 +71,7 @@ lint-frontend: ## 检查前端代码
 
 format-backend: ## 格式化后端代码
 	@echo "🎨 格式化后端代码..."
-	cd backend && black app/
+	cd backend && .venv/bin/black app/
 	@echo "✅ 后端代码格式化完成"
 
 docker-up: ## 启动 Docker Compose 服务

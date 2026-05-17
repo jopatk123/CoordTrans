@@ -1,85 +1,67 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict, Field
+
+# 从 backend/app/config.py 向上两级到达项目根目录 (CoordTrans/)
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     """应用配置类 - 所有配置项可通过环境变量覆盖"""
-    
+
     model_config = ConfigDict(
-        env_file=".env",
-        extra="ignore"  # 忽略额外的配置项
+        # 优先读取项目根目录的 .env（start.sh / make dev-backend 均 cd 到 backend/ 执行）
+        # 再回退到当前工作目录，确保本地开发与 Docker 环境都能正确加载
+        env_file=(_PROJECT_ROOT / ".env", ".env"),
+        extra="ignore",
     )
-    
+
     # ========== 高德地图 API 配置 ==========
     AMAP_KEY: str = Field(default="", description="高德地图 API Key")
     AMAP_BASE_URL: str = Field(
-        default="https://restapi.amap.com/v3",
-        description="高德地图 API 基础 URL"
+        default="https://restapi.amap.com/v3", description="高德地图 API 基础 URL"
     )
-    
+
     # ========== 请求配置 ==========
     REQUEST_TIMEOUT: float = Field(
-        default=10.0, 
-        ge=1.0, 
-        le=60.0,
-        description="单个请求超时时间（秒）"
+        default=10.0, ge=1.0, le=60.0, description="单个请求超时时间（秒）"
     )
     BATCH_CONCURRENCY: int = Field(
-        default=10, 
-        ge=1, 
-        le=50,
-        description="批量请求并发数"
+        default=10, ge=1, le=50, description="批量请求并发数"
     )
-    RETRY_TIMES: int = Field(
-        default=2, 
-        ge=0, 
-        le=5,
-        description="请求失败重试次数"
-    )
+    RETRY_TIMES: int = Field(default=2, ge=0, le=5, description="请求失败重试次数")
     RATE_LIMIT_RETRY_TIMES: int = Field(
-        default=5,
-        ge=0,
-        le=10,
-        description="触发速率限制后的最大重试次数"
+        default=5, ge=0, le=10, description="触发速率限制后的最大重试次数"
     )
     RATE_LIMIT_BASE_DELAY: float = Field(
         default=2.0,
         ge=0.5,
         le=30.0,
-        description="速率限制重试的基础延迟时间（秒），使用指数退避"
+        description="速率限制重试的基础延迟时间（秒），使用指数退避",
     )
     REQUESTS_PER_SECOND: float = Field(
         default=2.0,
         ge=0.1,
         le=100.0,
-        description="向高德 API 发送请求的最大速率（每秒请求数）"
+        description="向高德 API 发送请求的最大速率（每秒请求数）",
     )
 
     # ========== 批量处理限制 ==========
     MAX_BATCH_SIZE: int = Field(
-        default=1000, 
-        ge=1, 
-        le=10000,
-        description="单次批量处理最大行数"
+        default=1000, ge=1, le=10000, description="单次批量处理最大行数"
     )
     MAX_FILE_SIZE: int = Field(
         default=10 * 1024 * 1024,  # 10MB
         ge=1024,
-        description="上传文件最大大小（字节）"
+        description="上传文件最大大小（字节）",
     )
     MAX_ADDRESS_LENGTH: int = Field(
-        default=200, 
-        ge=10, 
-        le=500,
-        description="地址最大字符长度"
+        default=200, ge=10, le=500, description="地址最大字符长度"
     )
     MAX_CITY_LENGTH: int = Field(
-        default=50, 
-        ge=5, 
-        le=100,
-        description="城市名最大字符长度"
+        default=50, ge=5, le=100, description="城市名最大字符长度"
     )
-    
+
     # ========== 服务配置 ==========
     BACKEND_PORT: int = Field(default=8000, description="后端服务端口")
     BACKEND_HOST: str = Field(default="0.0.0.0", description="后端服务地址")
@@ -91,15 +73,15 @@ class Settings(BaseSettings):
             "http://localhost:60000,"
             "http://127.0.0.1:60000"
         ),
-        description="允许跨域访问的源，多个值使用逗号分隔"
+        description="允许跨域访问的源，多个值使用逗号分隔",
     )
-    
+
     # ========== 应用信息 ==========
     APP_NAME: str = Field(default="CoordTrans API", description="应用名称")
     APP_VERSION: str = Field(default="1.0.0", description="应用版本")
     APP_DESCRIPTION: str = Field(
         default="高德地图经纬度转换工具 API - 支持地址与经纬度的相互转换",
-        description="应用描述"
+        description="应用描述",
     )
 
     @property

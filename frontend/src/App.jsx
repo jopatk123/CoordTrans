@@ -34,7 +34,7 @@ const getErrorMessage = (error) => {
     return '网络连接失败，请检查网络';
   }
   const status = error.response?.status;
-  const detail = error.response?.data?.detail;
+  const detail = error.response?.data?.msg || error.response?.data?.detail;
   if (status === 400) return detail || '输入参数有误，请检查';
   if (status === 422) return '输入格式错误，请检查';
   if (status === 502) return '地图服务暂时不可用，请稍后重试';
@@ -207,7 +207,7 @@ const App = () => {
         if (res.data.type === 'application/json') {
           const text = await res.data.text();
           const errorData = JSON.parse(text);
-          throw new Error(errorData.detail || '处理失败');
+          throw new Error(errorData.msg || errorData.detail || '处理失败');
         }
         
         // 生成安全的文件名
@@ -217,7 +217,18 @@ const App = () => {
         onSuccess({}, file);
       } catch (err) {
         console.error('Batch upload error:', err);
-        const errorMsg = err.message || getErrorMessage(err);
+        // 当 responseType 为 blob 时，axios 将 4xx/5xx 响应体也包装为 Blob，
+        // 需要手动解析为 JSON 才能读取后端返回的错误消息。
+        let errorMsg = err.message;
+        if (err.response?.data instanceof Blob && err.response.data.type === 'application/json') {
+          try {
+            const text = await err.response.data.text();
+            const body = JSON.parse(text);
+            errorMsg = body.msg || body.detail || errorMsg;
+          } catch (_) { /* 解析失败则沿用原始消息 */ }
+        } else {
+          errorMsg = getErrorMessage(err) || errorMsg;
+        }
         message.error(`${file.name} 处理失败: ${errorMsg}`);
         onError(err);
       } finally {

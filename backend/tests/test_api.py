@@ -79,7 +79,7 @@ async def test_geocode_not_found(client, mock_amap_key):
         
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "failed"
+        assert data["status"] == "error"
 
 
 @pytest.mark.asyncio
