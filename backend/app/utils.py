@@ -55,9 +55,15 @@ async def read_upload_file(file: UploadFile) -> Tuple[pd.DataFrame, bytes]:
         if filename_lower.endswith('.csv'):
             df = _read_csv_with_encoding(contents)
         else:  # Excel files
-            df = pd.read_excel(io.BytesIO(contents))
+            df = _read_excel_file(contents, filename_lower)
     except HTTPException:
         raise
+    except ImportError as e:
+        logger.error(f"Missing Excel parser dependency for {file.filename}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="当前环境缺少 Excel 解析依赖，请使用 .xlsx 或安装对应解析库后重试"
+        ) from e
     except Exception as e:
         logger.error(f"Error reading file: {e}")
         raise HTTPException(
@@ -96,6 +102,12 @@ def _read_csv_with_encoding(contents: bytes) -> pd.DataFrame:
         status_code=400, 
         detail="无法解析文件编码，请使用 UTF-8 编码"
     )
+
+
+def _read_excel_file(contents: bytes, filename_lower: str) -> pd.DataFrame:
+    """按文件后缀选择 Excel 解析引擎。"""
+    engine = 'xlrd' if filename_lower.endswith('.xls') else 'openpyxl'
+    return pd.read_excel(io.BytesIO(contents), engine=engine)
 
 
 def find_address_column(df: pd.DataFrame) -> str:

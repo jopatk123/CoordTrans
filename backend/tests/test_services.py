@@ -195,6 +195,7 @@ def test_is_rate_limit_error_success_response():
 @pytest.mark.asyncio
 async def test_get_retries_on_rate_limit(amap_service):
     """触发速率限制时应进行指数退避重试，最终成功"""
+    amap_service.retry_times = 0
     amap_service.rate_limit_retry_times = 2
     amap_service.rate_limit_base_delay = 0.01  # 测试中缩短延迟
 
@@ -221,6 +222,41 @@ async def test_get_retries_on_rate_limit(amap_service):
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         data = await amap_service._get(f"{amap_service.base_url}/geocode/geo", {"address": "test"})
+    assert data["status"] == "1"
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_get_retries_rate_limit_independently_of_regular_retry_budget(amap_service):
+    """限流重试不应被普通重试次数限制住"""
+    amap_service.retry_times = 0
+    amap_service.rate_limit_retry_times = 2
+    amap_service.rate_limit_base_delay = 0.01
+
+    rate_limit_response = {"status": "0", "infocode": "10004", "info": "CUQPS_HAS_EXCEEDED_THE_LIMIT"}
+    success_response = {"status": "1", "geocodes": [{"location": "116.48,39.99"}]}
+
+    call_count = 0
+
+    async def fake_get(url, params=None, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        if call_count < 3:
+            resp.json = MagicMock(return_value=rate_limit_response)
+        else:
+            resp.json = MagicMock(return_value=success_response)
+        return resp
+
+    mock_client = AsyncMock()
+    mock_client.get = fake_get
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        data = await amap_service._get(f"{amap_service.base_url}/geocode/geo", {"address": "test"})
+
     assert data["status"] == "1"
     assert call_count == 3
 

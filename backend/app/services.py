@@ -81,9 +81,10 @@ class AmapService:
             retry = self.retry_times
         params["key"] = self.key
         last_error = None
+        regular_attempts = 0
         rate_limit_attempts = 0
 
-        for attempt in range(retry + 1):
+        while regular_attempts <= retry:
             try:
                 await self._token_bucket.acquire()
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -108,8 +109,6 @@ class AmapService:
                             f"after {delay:.1f}s delay: {url}"
                         )
                         await asyncio.sleep(delay)
-                        # 不计入普通重试次数，回到循环开头重试
-                        attempt -= 1
                         continue
 
                     # 检查其他高德 API 业务错误
@@ -139,21 +138,22 @@ class AmapService:
                         f"after {delay:.1f}s: {url}"
                     )
                     await asyncio.sleep(delay)
-                    attempt -= 1
                     continue
                 raise AmapServiceError(
                     f"Amap responded with HTTP {exc.response.status_code}"
                 ) from exc
             except httpx.TimeoutException as exc:
                 last_error = exc
-                logger.warning(f"Request timeout (attempt {attempt + 1}/{retry + 1}): {url}")
-                if attempt < retry:
-                    await asyncio.sleep(0.5 * (attempt + 1))
+                logger.warning(f"Request timeout (attempt {regular_attempts + 1}/{retry + 1}): {url}")
+                regular_attempts += 1
+                if regular_attempts <= retry:
+                    await asyncio.sleep(0.5 * regular_attempts)
             except httpx.HTTPError as exc:
                 last_error = exc
-                logger.warning(f"HTTP error (attempt {attempt + 1}/{retry + 1}): {exc}")
-                if attempt < retry:
-                    await asyncio.sleep(0.5 * (attempt + 1))
+                logger.warning(f"HTTP error (attempt {regular_attempts + 1}/{retry + 1}): {exc}")
+                regular_attempts += 1
+                if regular_attempts <= retry:
+                    await asyncio.sleep(0.5 * regular_attempts)
 
         raise AmapServiceError(f"Unable to reach Amap service after {retry + 1} attempts") from last_error
 
