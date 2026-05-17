@@ -15,6 +15,34 @@ def test_health_check(client):
     assert "version" in data
 
 
+def test_cors_preflight_allows_configured_origin(client):
+    """测试 CORS 白名单对开发环境来源生效"""
+    response = client.options(
+        "/api/geo",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_preflight_blocks_unknown_origin(client):
+    """测试未知来源不会被加入 CORS 白名单"""
+    response = client.options(
+        "/api/geo",
+        headers={
+            "Origin": "http://evil.example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
 @pytest.mark.asyncio
 async def test_geocode_success(client, mock_amap_key):
     """测试地址转经纬度成功的情况"""

@@ -56,6 +56,11 @@ jobs:
       run: |
         cd frontend
         npm ci
+
+    - name: Run lint
+      run: |
+        cd frontend
+        npm run lint
     
     - name: Run tests
       run: |
@@ -83,6 +88,6 @@ jobs:
     
     - name: Test Docker image
       run: |
-        docker run -d -p 60000:80 -e AMAP_KEY=test_key coordtrans:latest
+        docker run -d -p 60000:8000 -e AMAP_KEY=test_key coordtrans:latest
         sleep 10
         curl -f http://localhost:60000/health || exit 1

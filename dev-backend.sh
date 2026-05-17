@@ -16,4 +16,8 @@ cd "$ROOT_DIR/backend"
 HOST_VALUE="${BACKEND_HOST:-0.0.0.0}"
 PORT_VALUE="${BACKEND_PORT:-8000}"
 
-exec uvicorn app.main:app --host "$HOST_VALUE" --port "$PORT_VALUE" --reload
+if [ -x ".venv/bin/uvicorn" ]; then
+  exec .venv/bin/uvicorn app.main:app --host "$HOST_VALUE" --port "$PORT_VALUE" --reload
+fi
+
+exec python3 -m uvicorn app.main:app --host "$HOST_VALUE" --port "$PORT_VALUE" --reload

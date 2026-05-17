@@ -6,7 +6,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "60000:80"
+      - "60000:8000"
     environment:
       - AMAP_KEY=${AMAP_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:60000,http://127.0.0.1:60000}
     restart: always

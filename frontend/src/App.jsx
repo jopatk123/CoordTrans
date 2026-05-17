@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Layout, Tabs, Card, Form, Input, Button, Upload, message, Spin } from 'antd';
 import { UploadOutlined, SearchOutlined } from '@ant-design/icons';
 import axios from 'axios';
@@ -77,7 +77,7 @@ const App = () => {
     setSingleResult(null);
     try {
       const res = await api.post('/api/geo', {
-        address: address,
+        address,
         city: values.city?.trim() || null
       });
       if (res.data?.status === 'success' && res.data?.data) {
@@ -276,7 +276,7 @@ const App = () => {
       </Card>
 
       <Card title="批量处理 (Excel/CSV)" variant="borderless">
-        <p className="mb-2 text-gray-500">请上传包含"地址"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-2 text-gray-500">请上传包含“地址”列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
         <p className="mb-4 text-gray-500">{BATCH_PROCESSING_HINT}</p>
         <Spin spinning={uploadLoading} tip="处理中...">
           <Upload {...uploadProps('geo')}>
@@ -326,7 +326,7 @@ const App = () => {
       </Card>
 
       <Card title="批量处理 (Excel/CSV)" variant="borderless">
-        <p className="mb-2 text-gray-500">请上传包含"经度"和"纬度"列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
+        <p className="mb-2 text-gray-500">请上传包含“经度”和“纬度”列的 Excel 或 CSV 文件（最多1000行，文件不超过10MB）。</p>
         <p className="mb-4 text-gray-500">{BATCH_PROCESSING_HINT}</p>
         <Spin spinning={uploadLoading} tip="处理中...">
           <Upload {...uploadProps('regeo')}>

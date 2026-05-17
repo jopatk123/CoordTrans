@@ -73,14 +73,19 @@ AMAP_KEY=your_amap_api_key_here
 make install
 ```
 
+`make install` 会在 `backend/.venv` 中创建后端虚拟环境，避免污染系统 Python。
+
 或手动安装：
 
 ```bash
 # 后端
-cd backend && pip install -r requirements.txt
+cd backend
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 
 # 前端
-cd frontend && npm install
+cd ../frontend && npm ci
 ```
 
 ### 3. 启动开发环境
@@ -146,6 +151,7 @@ docker-compose up -d
 | `AMAP_KEY` | - | 高德地图 API Key（必填） |
 | `BACKEND_PORT` | 8000 | 后端服务端口 |
 | `BACKEND_HOST` | 0.0.0.0 | 后端服务地址 |
+| `ALLOWED_ORIGINS` | `http://localhost:5173,...` | CORS 白名单，多个来源用逗号分隔 |
 | `MAX_BATCH_SIZE` | 1000 | 批量处理最大行数 |
 | `MAX_FILE_SIZE` | 10485760 | 上传文件最大大小（字节） |
 | `REQUEST_TIMEOUT` | 10.0 | API 请求超时时间（秒） |
@@ -165,6 +171,16 @@ docker-compose up -d
 - 后端使用 `flake8` 进行代码检查
 - 前端使用 ESLint 进行代码检查
 - 所有测试需在 CI 中通过后方可合并
+
+### 本地检查
+
+```bash
+# 前端 lint
+make lint-frontend
+
+# 后端测试（使用 backend/.venv）
+make test-backend
+```
 
 ## License
 

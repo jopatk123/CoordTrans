@@ -47,7 +47,7 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # ========== CORS 配置 ==========
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,13 +55,6 @@ app.add_middleware(
 
 # ========== 注册路由 ==========
 app.include_router(router, prefix="/api")
-
-# ========== 静态文件服务 (生产模式) ==========
-# In development, we use Vite dev server.
-# In production, we mount the built frontend to /app/static
-static_dir = os.path.join(os.path.dirname(__file__), "../static")
-if os.path.exists(static_dir):
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
 
 @app.get("/health", tags=["health"], summary="健康检查")
@@ -72,3 +65,11 @@ def health_check():
     返回服务运行状态，用于容器健康检查和负载均衡器探测。
     """
     return {"status": "ok", "version": settings.APP_VERSION}
+
+
+# ========== 静态文件服务 (生产模式) ==========
+# In development, we use Vite dev server.
+# In production, we mount the built frontend to /app/static
+static_dir = os.path.join(os.path.dirname(__file__), "../static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")

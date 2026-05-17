@@ -84,6 +84,15 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = Field(default=8000, description="后端服务端口")
     BACKEND_HOST: str = Field(default="0.0.0.0", description="后端服务地址")
     FRONTEND_PORT: int = Field(default=5173, description="前端服务端口")
+    ALLOWED_ORIGINS: str = Field(
+        default=(
+            "http://localhost:5173,"
+            "http://127.0.0.1:5173,"
+            "http://localhost:60000,"
+            "http://127.0.0.1:60000"
+        ),
+        description="允许跨域访问的源，多个值使用逗号分隔"
+    )
     
     # ========== 应用信息 ==========
     APP_NAME: str = Field(default="CoordTrans API", description="应用名称")
@@ -92,6 +101,15 @@ class Settings(BaseSettings):
         default="高德地图经纬度转换工具 API - 支持地址与经纬度的相互转换",
         description="应用描述"
     )
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """返回标准化后的 CORS 白名单。"""
+        return [
+            origin.strip()
+            for origin in self.ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
 
 
 settings = Settings()

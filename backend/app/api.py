@@ -211,12 +211,14 @@ async def batch_file_geo(
     
     # 处理结果并添加到 DataFrame
     geo_data = process_geo_results(results)
-    df['api_longitude'] = geo_data['longitude']
-    df['api_latitude'] = geo_data['latitude']
-    df['api_formatted_address'] = geo_data['formatted_address']
-    df['api_province'] = geo_data['province']
-    df['api_city'] = geo_data['city']
-    df['api_district'] = geo_data['district']
+    df = df.copy().assign(
+        api_longitude=geo_data['longitude'],
+        api_latitude=geo_data['latitude'],
+        api_formatted_address=geo_data['formatted_address'],
+        api_province=geo_data['province'],
+        api_city=geo_data['city'],
+        api_district=geo_data['district'],
+    )
     
     # 返回 Excel 文件
     return create_excel_response(df, "processed_geocoding.xlsx")
@@ -253,7 +255,7 @@ async def batch_file_regeo(
     lon_col, lat_col = find_location_columns(df)
     
     # 提取经纬度列表
-    locations, invalid_count = extract_locations(df, lon_col, lat_col)
+    locations, _ = extract_locations(df, lon_col, lat_col)
     
     # 验证批量大小
     if len(locations) > settings.MAX_BATCH_SIZE:
@@ -271,8 +273,10 @@ async def batch_file_regeo(
     
     # 处理结果并添加到 DataFrame
     regeo_data = process_regeo_results(results)
-    df['api_address'] = regeo_data['address']
-    df['api_township'] = regeo_data['township']
+    df = df.copy().assign(
+        api_address=regeo_data['address'],
+        api_township=regeo_data['township'],
+    )
     
     # 返回 Excel 文件
     return create_excel_response(df, "processed_regeocoding.xlsx")
