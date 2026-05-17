@@ -1,4 +1,4 @@
-.PHONY: help dev dev-backend dev-frontend build test test-backend test-frontend clean install lint-frontend
+.PHONY: help dev start dev-backend dev-frontend build test test-backend test-frontend clean install lint-frontend
 
 help: ## 显示帮助信息
 	@echo "可用命令:"
@@ -14,13 +14,17 @@ install: ## 安装所有依赖
 dev: ## 使用 Docker Compose 启动完整开发环境
 	docker-compose up --build
 
+start: ## 一键重启本地开发服务器
+	@chmod +x start.sh
+	@./start.sh
+
 dev-backend: ## 启动后端开发服务器（本地）
-	@chmod +x dev-backend.sh
-	@./dev-backend.sh
+	cd backend && [ -x .venv/bin/python ] || (echo "请先执行 make install" && exit 1)
+	cd backend && .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port $${BACKEND_PORT:-8000} --reload
 
 dev-frontend: ## 启动前端开发服务器（本地）
-	@chmod +x dev-frontend.sh
-	@./dev-frontend.sh
+	cd frontend && [ -d node_modules ] || (echo "请先执行 cd frontend && npm ci" && exit 1)
+	cd frontend && npm run dev -- --host 0.0.0.0 --port $${FRONTEND_PORT:-5173}
 
 build: ## 构建 Docker 镜像
 	@echo "🏗️  构建 Docker 镜像..."

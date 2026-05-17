@@ -40,8 +40,7 @@ CoordTrans/
 │   └── vite.config.js
 ├── docker-compose.yml    # 生产部署配置
 ├── Makefile              # 常用命令快捷方式
-├── dev-backend.sh        # 后端开发脚本
-├── dev-frontend.sh       # 前端开发脚本
+├── start.sh              # 一键重启开发服务器脚本
 ├── scripts/run_tests.sh  # 一键测试脚本
 └── README.md
 ```
@@ -90,8 +89,7 @@ cd ../frontend && npm ci
 
 ### 3. 启动开发环境
 
-- 启动后端：`./dev-backend.sh`（默认监听 `http://localhost:8000`）
-- 启动前端：`./dev-frontend.sh`（默认监听 `http://localhost:5173`）
+- 一键重启后端和前端：`./start.sh`（会先清理占用 `8000` 和 `5173` 端口的旧进程）
 
 ## API 文档
 
